@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS titles (
     genres TEXT NOT NULL DEFAULT '[]',
     popularity REAL NOT NULL DEFAULT 0,
     vote_average REAL NOT NULL DEFAULT 0,
+    vote_count INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (media_type, tmdb_id)
 );
 CREATE TABLE IF NOT EXISTS releases (
@@ -95,6 +96,10 @@ def init():
     os.makedirs(DATA_DIR, exist_ok=True)
     with tx() as conn:
         conn.executescript(SCHEMA)
+        # Migrations for databases created by older versions
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(titles)")}
+        if "vote_count" not in cols:
+            conn.execute("ALTER TABLE titles ADD COLUMN vote_count INTEGER NOT NULL DEFAULT 0")
 
 
 def get_meta(key, default=None):

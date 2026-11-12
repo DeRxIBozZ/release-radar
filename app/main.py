@@ -3,6 +3,7 @@ import logging
 import os
 import sqlite3
 from contextlib import asynccontextmanager
+from datetime import date, timedelta
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
@@ -167,10 +168,24 @@ def _ints(csv: str) -> set[int]:
     return {int(x) for x in csv.split(",") if x.strip().lstrip("-").isdigit()}
 
 
+MIN_VOTES = 10
+
+
+def group_key(iso: str, group: str) -> str:
+    """First day of the day/week/month an ISO date falls into. Weeks start on Monday."""
+    if group == "week":
+        d = date.fromisoformat(iso)
+        return (d - timedelta(days=d.weekday())).isoformat()
+    if group == "month":
+        return iso[:7] + "-01"
+    return iso
+
+
 @app.get("/api/feed")
 def feed(
     tab: str = "released", type: str = "all", genres: str = "", sources: str = "",
-    region: str = "all", q: str = "", offset: int = 0, limit: int = 60,
+    region: str = "all", q: str = "", group: str = "day", sort: str = "date",
+    offset: int = 0, limit: int = 60,
     user=Depends(auth.current_user),
 ):
     prefs = auth.user_prefs(user)
@@ -204,7 +219,7 @@ def feed(
         args.append("%" + q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%")
     order = "r.date ASC" if upcoming else "r.date DESC"
     sql = (
-        "SELECT r.*, t.title, t.overview, t.poster_path, t.genres, t.popularity, t.vote_average "
+        "SELECT r.*, t.title, t.overview, t.poster_path, t.genres, t.popularity, t.vote_average, t.vote_count "
         "FROM releases r JOIN titles t ON t.media_type = r.media_type AND t.tmdb_id = r.tmdb_id "
         f"WHERE {' AND '.join(where)} ORDER BY {order}, t.popularity DESC, t.title"
     )
@@ -225,12 +240,27 @@ def feed(
             item = items[key] = {
                 "media_type": r["media_type"], "tmdb_id": r["tmdb_id"], "title": r["title"],
                 "overview": r["overview"], "poster": r["poster_path"], "genres": g,
-                "vote": round(r["vote_average"], 1), "date": r["date"], "season": r["season"],
+                # Ratings from a handful of votes are noise, so treat them as unrated.
+                "vote": round(r["vote_average"], 1) if r["vote_count"] >= MIN_VOTES else 0,
+                "votes": r["vote_count"], "date": r["date"], "season": r["season"],
                 "ep_from": r["ep_from"], "ep_to": r["ep_to"], "ep_total": r["ep_total"],
-                "premiere": bool(r["is_premiere"]), "where": [],
+                "premiere": bool(r["is_premiere"]), "popularity": r["popularity"], "where": [],
             }
         item["where"].append({"region": r["region"], "source": r["source"]})
     ordered = list(items.values())
+    # Rows arrive ordered by date (tab direction), then popularity. Python's sort
+    # is stable, so sorting by the chosen key and then by group keeps groups
+    # chronological and the chosen order inside each group.
+    group = group if group in ("day", "week", "month") else "day"
+    for it in ordered:
+        it["group"] = group_key(it["date"], group)
+    if sort == "popularity":
+        ordered.sort(key=lambda it: -it["popularity"])
+    elif sort == "title":
+        ordered.sort(key=lambda it: it["title"].casefold())
+    elif sort == "rating":
+        ordered.sort(key=lambda it: (it["vote"] == 0, -it["vote"]))
+    ordered.sort(key=lambda it: it["group"], reverse=not upcoming)
     page = ordered[offset:offset + limit]
     nxt = offset + limit if offset + limit < len(ordered) else None
     return {"items": page, "total": len(ordered), "next_offset": nxt, "today": today}

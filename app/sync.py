@@ -160,6 +160,7 @@ def title_row(kind: str, d: dict):
         json.dumps([g["id"] for g in d.get("genres") or []]),
         d.get("popularity") or 0,
         d.get("vote_average") or 0,
+        d.get("vote_count") or 0,
     )
 
 
@@ -323,10 +324,11 @@ async def build_scope(c, region: str, source: str, start: date, end: date):
 def store_scope(region: str, source: str, titles: list, rows: list):
     with db.tx() as conn:
         conn.executemany(
-            "INSERT INTO titles(media_type, tmdb_id, title, overview, poster_path, genres, popularity, vote_average) "
-            "VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(media_type, tmdb_id) DO UPDATE SET "
+            "INSERT INTO titles(media_type, tmdb_id, title, overview, poster_path, genres, popularity, vote_average, vote_count) "
+            "VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(media_type, tmdb_id) DO UPDATE SET "
             "title=excluded.title, overview=excluded.overview, poster_path=excluded.poster_path, "
-            "genres=excluded.genres, popularity=excluded.popularity, vote_average=excluded.vote_average",
+            "genres=excluded.genres, popularity=excluded.popularity, vote_average=excluded.vote_average, "
+            "vote_count=excluded.vote_count",
             titles,
         )
         conn.execute("DELETE FROM releases WHERE region=? AND source=?", (region, source))

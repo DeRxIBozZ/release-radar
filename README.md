@@ -5,7 +5,7 @@ A self-hosted release feed for movies and series, built on the TMDB API.
 - **Released** and **Upcoming** tabs, each a chronological feed
 - Per-user tracking: cinemas, digital/VOD, and any streaming service TMDB knows (Netflix, Disney+, ...)
 - Regions: Germany and United States
-- Filters: movies/series, genre, source, region, title search (remembered per user)
+- Filters: movies/series, genre, source, region, title search; group by day, week or month; sort by date, popularity, title or rating (all remembered per user)
 - User accounts with login; admins create and manage users
 
 ## Install

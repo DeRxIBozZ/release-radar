@@ -127,6 +127,26 @@ function dayLabel(iso, today) {
   else rel = -diff < 60 ? `${-diff} days ago` : `${Math.round(-diff / 30)} months ago`;
   return [text, rel];
 }
+function relText(diff, unit, names) {
+  if (names[diff]) return names[diff];
+  return diff > 0 ? `in ${diff} ${unit}s` : `${-diff} ${unit}s ago`;
+}
+function groupLabel(key, group, today) {
+  if (group === "day") return dayLabel(key, today);
+  const d = new Date(key + "T12:00:00"), t = new Date(today + "T12:00:00");
+  if (group === "week") {
+    const end = new Date(d); end.setDate(d.getDate() + 6);
+    const thisWeek = new Date(t); thisWeek.setDate(t.getDate() - ((t.getDay() + 6) % 7));
+    const diff = Math.round((d - thisWeek) / (7 * 86400000));
+    const short = { day: "numeric", month: "short" };
+    return [`${d.toLocaleDateString("en-GB", short)} – ${end.toLocaleDateString("en-GB", { ...short, year: "numeric" })}`,
+      relText(diff, "week", { 0: "This week", 1: "Next week", "-1": "Last week" })];
+  }
+  const diff = (d.getFullYear() - t.getFullYear()) * 12 + d.getMonth() - t.getMonth();
+  return [d.toLocaleDateString("en-GB", { month: "long", year: "numeric" }),
+    relText(diff, "month", { 0: "This month", 1: "Next month", "-1": "Last month" })];
+}
+const shortDate = (iso) => new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
 function episodeLabel(it) {
   if (it.media_type !== "tv") return null;
   const s = "Season " + it.season;
@@ -140,11 +160,11 @@ function episodeLabel(it) {
 // ---- feed -------------------------------------------------------------------
 function renderFeed(tab) {
   const main = document.getElementById("main");
-  const f = Object.assign({ type: "all", region: "all", genres: [], sources: [], q: "" }, state.filters);
+  const f = Object.assign({ type: "all", region: "all", genres: [], sources: [], q: "", group: "day", sort: "date" }, state.filters);
   const tracked = trackedSources();
   f.sources = f.sources.filter((s) => tracked.includes(s));
   const list = h("div", {}), count = h("span", { class: "count" }), more = h("div", { class: "more" });
-  let offset = 0, lastDay = null, grid = null, saveTimer = null;
+  let offset = 0, lastGroup = null, grid = null, saveTimer = null;
 
   const changed = () => {
     state.filters = f;
@@ -155,22 +175,22 @@ function renderFeed(tab) {
 
   async function load(reset) {
     const token = ++state.feedToken;
-    if (reset) { offset = 0; lastDay = null; grid = null; }
+    if (reset) { offset = 0; lastGroup = null; grid = null; }
     const qs = new URLSearchParams({ tab, type: f.type, region: f.region, genres: f.genres.join(","),
-      sources: f.sources.join(","), q: f.q, offset, limit: 60 });
+      sources: f.sources.join(","), q: f.q, group: f.group, sort: f.sort, offset, limit: 60 });
     let data;
     try { data = await api("GET", "/api/feed?" + qs); } catch (e) { return; }
     if (token !== state.feedToken) return;
     if (reset) list.replaceChildren();
     count.textContent = data.total + (data.total === 1 ? " release" : " releases");
     for (const it of data.items) {
-      if (it.date !== lastDay) {
-        lastDay = it.date;
-        const [text, rel] = dayLabel(it.date, data.today);
+      if (it.group !== lastGroup) {
+        lastGroup = it.group;
+        const [text, rel] = groupLabel(it.group, f.group, data.today);
         grid = h("div", { class: "grid" });
         list.append(h("section", { class: "day" }, h("h2", {}, text, h("small", {}, rel)), grid));
       }
-      grid.append(card(it));
+      grid.append(card(it, f.group !== "day"));
     }
     if (!data.total) {
       list.replaceChildren(h("div", { class: "empty" }, tracked.length
@@ -201,6 +221,11 @@ function renderFeed(tab) {
         setGenreSummary(); changed();
       } }), g.name))));
 
+  const sortSelect = h("select", { "aria-label": "Sort within groups", onchange: (e) => { f.sort = e.target.value; changed(); } },
+    [["date", "Sort: Date"], ["popularity", "Sort: Popularity"], ["title", "Sort: Title A–Z"], ["rating", "Sort: Rating"]]
+      .map(([value, label]) => h("option", { value }, label)));
+  sortSelect.value = f.sort;
+
   let searchTimer = null;
   const search = h("input", { type: "search", placeholder: "Search title", value: f.q, oninput: (e) => {
     clearTimeout(searchTimer); searchTimer = setTimeout(() => { f.q = e.target.value; changed(); }, 300);
@@ -219,12 +244,15 @@ function renderFeed(tab) {
     h("div", { class: "filters" },
       seg("type", [["all", "All"], ["movie", "Movies"], ["tv", "Series"]]),
       state.prefs.regions.length > 1 ? seg("region", [["all", "All regions"], ...state.prefs.regions.map((r) => [r, r])]) : null,
-      genreMenu, search, count),
+      genreMenu, search),
+    h("div", { class: "filters" },
+      seg("group", [["day", "Day"], ["week", "Week"], ["month", "Month"]]),
+      sortSelect, count),
     sourceChips, list, more);
   load(true);
 }
 
-function card(it) {
+function card(it, showDate) {
   const url = `https://www.themoviedb.org/${it.media_type}/${it.tmdb_id}`;
   const genres = it.genres.map((id) => state.meta?.genres.find((g) => g.id === id)?.name).filter(Boolean).slice(0, 3).join(", ");
   const ep = episodeLabel(it);
@@ -245,7 +273,7 @@ function card(it) {
         h("span", { class: "tag " + it.media_type }, it.media_type === "tv" ? "Series" : "Movie"),
         ep && ep[1] ? h("span", { class: "tag hl" }, ep[1]) : null,
         ep ? ep[0] : null),
-      h("div", { class: "sub" }, [genres, it.vote ? "★ " + it.vote.toFixed(1) : null].filter(Boolean).join(" · ")),
+      h("div", { class: "sub" }, [showDate ? shortDate(it.date) : null, genres, it.vote ? "★ " + it.vote.toFixed(1) : null].filter(Boolean).join(" · ")),
       h("div", { class: "overview" }, it.overview),
       h("div", { class: "where" }, badges)));
 }
