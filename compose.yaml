@@ -1,0 +1,25 @@
+# Release Radar: copy this file to the server, fill in the values below,
+# then run:  docker compose up -d
+services:
+  release-radar:
+    image: ghcr.io/derxibozz/release-radar:latest
+    container_name: release-radar
+    restart: unless-stopped
+    ports:
+      - "8097:8097"
+    environment:
+      # TMDB "API Read Access Token" (long, starts with eyJ) or the short API key
+      TMDB_TOKEN: "PASTE_TMDB_TOKEN_HERE"
+      # First admin account, only used when the database is still empty
+      ADMIN_USER: "admin"
+      ADMIN_PASSWORD: "CHANGE_ME_min_8_chars"
+      TZ: "Europe/Berlin"
+      # Optional tuning (defaults shown)
+      # PAST_DAYS: "90"      # how far back the Released tab goes
+      # FUTURE_DAYS: "365"   # how far ahead the Upcoming tab looks
+      # SYNC_HOURS: "12"     # how often data is refreshed from TMDB
+    volumes:
+      - release-radar-data:/data
+
+volumes:
+  release-radar-data:
