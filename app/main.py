@@ -43,6 +43,9 @@ async def guard(request: Request, call_next):
     response.headers.setdefault("Referrer-Policy", "same-origin")
     if request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"
+    elif request.url.path.startswith("/static/"):
+        # Revalidate on every load (a cheap 304 via ETag) so updates show up immediately.
+        response.headers["Cache-Control"] = "no-cache"
     return response
 
 
