@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import os
@@ -6,7 +7,7 @@ from contextlib import asynccontextmanager
 from datetime import date, timedelta
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import auth, db, sync
@@ -353,9 +354,24 @@ def healthz():
     return {"ok": True}
 
 
+def _versioned_index() -> str:
+    """index.html with a content hash on each asset URL, so browsers fetch new
+    files after an update instead of reusing an old cached copy."""
+    with open(os.path.join(STATIC, "index.html"), encoding="utf-8") as f:
+        html = f.read()
+    for name in ("app.js", "style.css"):
+        with open(os.path.join(STATIC, name), "rb") as f:
+            version = hashlib.sha256(f.read()).hexdigest()[:12]
+        html = html.replace(f"/static/{name}", f"/static/{name}?v={version}")
+    return html
+
+
+INDEX_HTML = _versioned_index()
+
+
 @app.get("/")
 def index():
-    return FileResponse(os.path.join(STATIC, "index.html"), headers={"Cache-Control": "no-cache"})
+    return HTMLResponse(INDEX_HTML, headers={"Cache-Control": "no-cache"})
 
 
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
