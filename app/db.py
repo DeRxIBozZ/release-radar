@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS releases (
     ep_to INTEGER NOT NULL DEFAULT 0,
     ep_total INTEGER NOT NULL DEFAULT 0,
     is_premiere INTEGER NOT NULL DEFAULT 0,
+    is_rerelease INTEGER NOT NULL DEFAULT 0,
+    note TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (media_type, tmdb_id, region, source, date, season, ep_from)
 );
 CREATE INDEX IF NOT EXISTS releases_date ON releases(date);
@@ -100,6 +102,11 @@ def init():
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(titles)")}
         if "vote_count" not in cols:
             conn.execute("ALTER TABLE titles ADD COLUMN vote_count INTEGER NOT NULL DEFAULT 0")
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(releases)")}
+        if "is_rerelease" not in cols:
+            conn.execute("ALTER TABLE releases ADD COLUMN is_rerelease INTEGER NOT NULL DEFAULT 0")
+        if "note" not in cols:
+            conn.execute("ALTER TABLE releases ADD COLUMN note TEXT NOT NULL DEFAULT ''")
 
 
 def get_meta(key, default=None):

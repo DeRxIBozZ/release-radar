@@ -22,6 +22,7 @@ DEFAULT_PREFS = {
     "digital": False,
     "providers": [8, 337, 9],  # Netflix, Disney+, Prime Video
     "tv_mode": "premieres",    # 'premieres' | 'episodes'
+    "hide_rereleases": True,
 }
 
 

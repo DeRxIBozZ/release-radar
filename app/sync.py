@@ -182,13 +182,66 @@ def regional_dates(details: dict, region: str) -> dict[int, list[str]]:
     return out
 
 
+RERELEASE_AFTER = timedelta(days=365)
+
+
+# Release types that count as "the same kind" when looking for an earlier release.
+# Festival screenings (1), physical media (5) and TV (6) never make a later date a re-release.
+SAME_KIND = {2: (2, 3), 3: (2, 3), 4: (4,)}
+
+
+def first_of_kind(details: dict, region: str, rtype: int) -> str | None:
+    """Earliest release in a region of the same kind as rtype (cinema or digital)."""
+    dates = regional_dates(details, region)
+    found = [d for t in SAME_KIND.get(rtype, ()) for d in dates.get(t, [])]
+    return min(found) if found else None
+
+
+def release_notes(details: dict, region: str, rtype: int) -> dict[str, str]:
+    """TMDB's free-text note per release date, e.g. 'Avengers Endgame: Encore'."""
+    out: dict[str, str] = {}
+    for entry in ((details.get("release_dates") or {}).get("results") or []):
+        if entry.get("iso_3166_1") != region:
+            continue
+        for rd in entry.get("release_dates") or []:
+            d = (rd.get("release_date") or "")[:10]
+            if d and rd.get("type") == rtype and not out.get(d):
+                out[d] = (rd.get("note") or "").strip()[:120]
+    return out
+
+
+OLD_FILM_AFTER = timedelta(days=5 * 365)
+
+
+def is_rerelease(details: dict, region: str, rtype: int, when: str) -> int:
+    """A release counts as a re-release when either
+    - the film already had a release of the same kind (cinema or digital) in
+      this region more than a year earlier, or
+    - the film's original release date is more than five years earlier
+      (an old film arriving now, even if TMDB lacks its earlier regional dates).
+      Five years, because foreign films often reach a country two to four years late.
+    """
+    d = date.fromisoformat(when)
+    first = first_of_kind(details, region, rtype)
+    if first and d - date.fromisoformat(first) > RERELEASE_AFTER:
+        return 1
+    original = details.get("release_date") or ""
+    try:
+        if original and d - date.fromisoformat(original) > OLD_FILM_AFTER:
+            return 1
+    except ValueError:
+        pass
+    return 0
+
+
 async def movie_details(c: tmdb.Client, movie_id: int):
     return await c.get(f"/movie/{movie_id}", {"language": LANG, "append_to_response": "release_dates"})
 
 
 # --- scope builders -----------------------------------------------------------
 # Each returns (title rows, release rows). Release rows are
-# (media_type, tmdb_id, region, source, date, season, ep_from, ep_to, ep_total, is_premiere)
+# (media_type, tmdb_id, region, source, date, season, ep_from, ep_to, ep_total, is_premiere,
+#  is_rerelease, note)
 
 async def scope_release_type(c, region: str, source: str, start: date, end: date):
     rtype = 3 if source == "theatrical" else 4
@@ -211,8 +264,10 @@ async def scope_release_type(c, region: str, source: str, start: date, end: date
         if not dates:
             continue
         titles.append(title_row("movie", d))
+        notes = release_notes(d, region, rtype)
         for x in dates:
-            rows.append(("movie", d["id"], region, source, x, 0, 0, 0, 0, 0))
+            rows.append(("movie", d["id"], region, source, x, 0, 0, 0, 0, 0,
+                         is_rerelease(d, region, rtype, x), notes.get(x, "")))
     return titles, rows
 
 
@@ -243,7 +298,8 @@ async def scope_provider_movies(c, region: str, pid: int, start: date, end: date
         if not (s <= when <= e):
             continue
         titles.append(title_row("movie", d))
-        rows.append(("movie", d["id"], region, f"p:{pid}", when, 0, 0, 0, 0, 0))
+        # `when` is the first digital date, so by definition never a re-release.
+        rows.append(("movie", d["id"], region, f"p:{pid}", when, 0, 0, 0, 0, 0, 0, ""))
     return titles, rows
 
 
@@ -306,7 +362,7 @@ async def scope_provider_tv(c, region: str, pid: int, start: date, end: date):
             continue
         titles.append(title_row("tv", d))
         for when, season, ep_from, ep_to, total, premiere in events:
-            rows.append(("tv", d["id"], region, f"p:{pid}", when, season, ep_from, ep_to, total, premiere))
+            rows.append(("tv", d["id"], region, f"p:{pid}", when, season, ep_from, ep_to, total, premiere, 0, ""))
     return titles, rows
 
 
@@ -332,7 +388,11 @@ def store_scope(region: str, source: str, titles: list, rows: list):
             titles,
         )
         conn.execute("DELETE FROM releases WHERE region=? AND source=?", (region, source))
-        conn.executemany("INSERT OR IGNORE INTO releases VALUES(?,?,?,?,?,?,?,?,?,?)", rows)
+        conn.executemany(
+            "INSERT OR IGNORE INTO releases(media_type, tmdb_id, region, source, date, season, ep_from, "
+            "ep_to, ep_total, is_premiere, is_rerelease, note) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            rows,
+        )
 
 
 # --- orchestration ------------------------------------------------------------

@@ -62,6 +62,7 @@ def clean_prefs(body: dict) -> dict:
         "digital": bool(body.get("digital")),
         "providers": providers[:60],
         "tv_mode": "episodes" if body.get("tv_mode") == "episodes" else "premieres",
+        "hide_rereleases": bool(body.get("hide_rereleases", True)),
     }
 
 
@@ -212,6 +213,8 @@ def feed(
     if type in ("movie", "tv"):
         where.append("r.media_type = ?")
         args.append(type)
+    if prefs.get("hide_rereleases", True):
+        where.append("r.is_rerelease = 0")
     if prefs.get("tv_mode") != "episodes":
         where.append("(r.media_type = 'movie' OR r.is_premiere = 1)")
     if q.strip():
@@ -244,9 +247,13 @@ def feed(
                 "vote": round(r["vote_average"], 1) if r["vote_count"] >= MIN_VOTES else 0,
                 "votes": r["vote_count"], "date": r["date"], "season": r["season"],
                 "ep_from": r["ep_from"], "ep_to": r["ep_to"], "ep_total": r["ep_total"],
-                "premiere": bool(r["is_premiere"]), "popularity": r["popularity"], "where": [],
+                "premiere": bool(r["is_premiere"]), "rerelease": True, "note": "", "popularity": r["popularity"], "where": [],
             }
         item["where"].append({"region": r["region"], "source": r["source"]})
+        # Only call it a re-release when it is one in every region it is listed for.
+        item["rerelease"] = item["rerelease"] and bool(r["is_rerelease"])
+        if r["is_rerelease"] and r["note"] and not item["note"]:
+            item["note"] = r["note"]
     ordered = list(items.values())
     # Rows arrive ordered by date (tab direction), then popularity. Python's sort
     # is stable, so sorting by the chosen key and then by group keeps groups

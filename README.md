@@ -24,9 +24,11 @@ Data lives in the `release-radar-data` volume (one SQLite file). Update with `do
 | Source | Date used |
 |---|---|
 | In theaters | TMDB theatrical release date for the region |
-| Digital / VOD | TMDB digital release date for the region |
+| Digital / VOD | TMDB digital release date for the region: available to buy or rent online (Apple TV, Amazon, Google Play, ...) |
 | Streaming service, series | Episode air dates of shows on that service (or ordered by it) |
 | Streaming service, movies | Regional digital release date, or the premiere date for titles that skipped cinemas |
+
+**Re-releases** (anniversary runs, new cuts, old films arriving digitally) are hidden by default and can be shown in Settings, where they get a "Re-release" tag. A date counts as a re-release when the film had a release of the same kind (cinema or digital) in that country more than a year earlier, or when the film is more than five years old.
 
 Limits that come from TMDB's data:
 

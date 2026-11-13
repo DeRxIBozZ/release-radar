@@ -72,7 +72,7 @@ input:focus, select:focus, button:focus-visible, a:focus-visible { outline: 2px 
 .sub { color: var(--muted); font-size: 13px; }
 .tag { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase;
   padding: 1px 6px; border-radius: 4px; margin-right: 6px; background: var(--panel2); color: var(--muted); }
-.tag.movie { color: #f0b860; } .tag.tv { color: #7fb4ff; } .tag.hl { color: var(--accent); }
+.tag.movie { color: #f0b860; } .tag.rerelease { color: #c79bf2; } .tag.tv { color: #7fb4ff; } .tag.hl { color: var(--accent); }
 .overview { color: var(--muted); font-size: 13px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .where { display: flex; flex-wrap: wrap; gap: 5px; margin-top: auto; padding-top: 4px; }
 .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; background: var(--panel2);
